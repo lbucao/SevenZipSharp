@@ -97,6 +97,17 @@ namespace SevenZip
 #if !WINCE
         private int _memoryPressure;
 #endif
+
+        /// <summary>
+        /// The last time GC was manually invoked called by this instance.
+        /// </summary>
+        private DateTime lastManualGcFinished;
+
+        /// <summary>
+        /// The amount of time the last manually invoked GC took.
+        /// </summary>
+        private TimeSpan? lastManualGcDuration;
+
         #endregion
 
         #region Constructors
@@ -353,7 +364,7 @@ namespace SevenZip
         {
             if (FileCompressionFinished != null)
             {
-                FileCompressionFinished(this, e);
+                FileCompressionFinished(new object(), e);
             }
         }
 
@@ -727,7 +738,18 @@ namespace SevenZip
                         _wrappersToDispose.Add(_fileStream);
                     }                                
                 _fileStream = null;
-                GC.Collect();
+
+                var timeSinceLastGcMs = DateTime.UtcNow.Subtract(lastManualGcFinished).TotalMilliseconds;
+                if (!lastManualGcDuration.HasValue 
+                    || timeSinceLastGcMs > 10*lastManualGcDuration.Value.TotalMilliseconds)
+                {
+                    // Manually invoke GC only if it has been 10x last GC duration since last manual GC invocation
+
+                    var start = DateTime.UtcNow;
+                    GC.Collect();
+                    lastManualGcDuration = DateTime.UtcNow.Subtract(start);
+                    lastManualGcFinished = DateTime.UtcNow;
+                }
                 // Issue #6987
                 //GC.WaitForPendingFinalizers();
             }
